@@ -175,6 +175,17 @@ echo low-power | sudo tee /sys/firmware/acpi/platform_profile
 Set `enable_profiles = false` in config to use fixed thresholds regardless
 of platform profile.
 
+### Measured Behavior (stress-ng, 60s per profile)
+
+| Profile | Thresholds | Steady Temp | Fan (RPM) | Freq |
+|---------|------------|-------------|-----------|------|
+| Performance | 75-90°C | 74-75°C | 5300 | 5.1 GHz (full) |
+| Balanced | 55-72°C | 65-66°C | 3800-4000 | 2.2-3.5 GHz |
+| Silent | 45-60°C | 53-54°C | 4100* | 2.1-2.7 GHz |
+
+*Fan RPM during silent test was elevated from prior performance test spinup.
+Fan hysteresis means it takes time to spin down after high temps.
+
 ## Sensor Detection
 
 Priority order:
