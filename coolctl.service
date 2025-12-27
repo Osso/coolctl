@@ -1,0 +1,20 @@
+[Unit]
+Description=CPU Thermal Throttle Daemon
+After=local-fs.target
+ConditionPathExists=/etc/coolctl.toml
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/coolctl
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Ensure amd-pstate is in passive mode before starting
+ExecStartPre=/bin/sh -c 'if [ -f /sys/devices/system/cpu/amd_pstate/status ]; then echo passive > /sys/devices/system/cpu/amd_pstate/status 2>/dev/null || true; fi'
+
+# Restore max frequency on stop
+ExecStopPost=/bin/sh -c 'for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq; do cat "$${f%scaling_max_freq}cpuinfo_max_freq" > "$$f" 2>/dev/null || true; done'
+
+[Install]
+WantedBy=multi-user.target

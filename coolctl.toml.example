@@ -1,0 +1,39 @@
+# coolctl - CPU Thermal Throttle Daemon
+# See SPEC.md for full documentation
+
+# Temperature thresholds (°C) - used for "balanced" profile
+throttle_start = 55   # Begin reducing frequency
+throttle_max = 72     # Force minimum frequency
+
+# Hysteresis to prevent oscillation
+hysteresis = 2        # Degrees before changing freq
+
+# Polling interval
+poll_interval_ms = 1000
+
+# Sensor selection (optional)
+# sensor = "/sys/class/hwmon/hwmon3/temp1_input"  # Explicit path
+# sensor_source = "auto"  # auto|hwmon|thermal
+
+# Frequency limits (optional, auto-detected)
+# min_freq = 400000    # kHz
+# max_freq = 5100000   # kHz
+
+# Logging
+log_level = "info"    # error|warn|info|debug
+# log_file = "/var/log/coolctl.log"
+
+# Profile switching (integrates with platform_profile)
+enable_profiles = true
+
+# Silent profile: aggressive throttling for quiet fans
+# Maps to platform_profile "low-power"
+[profile_silent]
+throttle_start = 45
+throttle_max = 60
+
+# Performance profile: minimal throttling, allow higher temps
+# Maps to platform_profile "performance"
+[profile_performance]
+throttle_start = 75
+throttle_max = 90
