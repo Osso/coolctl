@@ -121,15 +121,6 @@ impl CpuFreq {
         self.cpu_paths.len()
     }
 
-    /// Read current scaling_max_freq from first CPU (kHz)
-    pub fn read_current_max(&self) -> Result<u64, CpuFreqError> {
-        if let Some(path) = self.cpu_paths.first() {
-            Self::read_freq_file(path)
-        } else {
-            Err(CpuFreqError::NoCpusFound)
-        }
-    }
-
     /// Set maximum frequency for all CPUs (kHz)
     /// Returns true if actually written, false if filtered
     pub fn set_max_freq(&mut self, freq: u64) -> Result<bool, CpuFreqError> {

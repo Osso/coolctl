@@ -3,8 +3,9 @@ mod cpufreq;
 mod profile;
 mod thermal;
 mod throttle;
+mod turbo;
 
-use config::Config;
+use config::{Config, PowerProfile};
 use cpufreq::CpuFreq;
 use nix::libc;
 use nix::sys::signal::{self, SigHandler, Signal};
@@ -14,6 +15,7 @@ use std::thread;
 use std::time::Duration;
 use thermal::ThermalSensor;
 use throttle::Throttle;
+use turbo::TurboController;
 
 const CONFIG_PATH: &str = "/etc/coolctl.toml";
 
@@ -52,6 +54,16 @@ fn init_logging(config: &Config) {
         .filter_level(level)
         .format_timestamp_secs()
         .init();
+}
+
+/// Apply turbo boost state based on profile (disabled in silent mode)
+fn apply_turbo_for_profile(turbo: Option<&TurboController>, profile: PowerProfile) {
+    let Some(turbo) = turbo else { return };
+
+    let should_enable = profile != PowerProfile::Silent;
+    if let Err(e) = turbo.set_enabled(should_enable) {
+        log::error!("Failed to set turbo state: {}", e);
+    }
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -99,16 +111,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         cpufreq.max_freq() / 1000
     );
 
+    // Detect turbo boost control (optional)
+    let turbo = match TurboController::detect() {
+        Ok(ctrl) => Some(ctrl),
+        Err(e) => {
+            log::info!("Turbo boost control not available: {}", e);
+            None
+        }
+    };
+
     // Initialize throttle controller
     let mut throttle = Throttle::new(&config, cpufreq.min_freq(), cpufreq.max_freq());
 
     // Apply initial profile thresholds if profiles enabled
     if profiles_enabled {
-        let thresholds = config.thresholds_for(profile_watcher.current());
+        let current_profile = profile_watcher.current();
+        let thresholds = config.thresholds_for(current_profile);
         throttle.update_thresholds(thresholds);
+        apply_turbo_for_profile(turbo.as_ref(), current_profile);
         log::info!(
             "Profile {}: throttle {}°C - {}°C",
-            profile_watcher.current().name(),
+            current_profile.name(),
             thresholds.throttle_start,
             thresholds.throttle_max
         );
@@ -135,6 +158,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(new_profile) = profile_watcher.poll() {
                 let thresholds = config.thresholds_for(new_profile);
                 throttle.update_thresholds(thresholds);
+                apply_turbo_for_profile(turbo.as_ref(), new_profile);
                 log::info!(
                     "Profile changed to {}: throttle {}°C - {}°C",
                     new_profile.name(),
@@ -177,10 +201,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         thread::sleep(poll_interval);
     }
 
-    // Graceful shutdown: restore max frequency
-    log::info!("Shutting down, restoring max frequency");
+    // Graceful shutdown: restore max frequency and turbo state
+    log::info!("Shutting down, restoring settings");
     if let Err(e) = cpufreq.restore_max() {
         log::error!("Failed to restore max frequency: {}", e);
+    }
+    if let Some(ref turbo) = turbo {
+        if let Err(e) = turbo.restore() {
+            log::error!("Failed to restore turbo state: {}", e);
+        }
     }
 
     log::info!("coolctl stopped");

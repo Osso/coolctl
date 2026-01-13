@@ -112,8 +112,8 @@ impl Default for Config {
             log_file: None,
             enable_profiles: true,
             profile_silent: ProfileThresholds {
-                throttle_start: 45,
-                throttle_max: 60,
+                throttle_start: 40,
+                throttle_max: 50,
             },
             profile_performance: ProfileThresholds {
                 throttle_start: 75,

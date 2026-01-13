@@ -134,8 +134,8 @@ poll_interval_ms = 1000
 enable_profiles = true
 
 [profile_silent]
-throttle_start = 45
-throttle_max = 60
+throttle_start = 40
+throttle_max = 50
 
 [profile_performance]
 throttle_start = 75
@@ -151,9 +151,22 @@ automatic throttling adjustment based on system power profile.
 
 | Platform Profile | coolctl Profile | Behavior |
 |-----------------|-----------------|----------|
-| `low-power`     | silent          | Aggressive throttling for quiet fans |
+| `low-power`     | silent          | Aggressive throttling for quiet fans, turbo disabled |
 | `balanced`      | balanced        | Default thresholds from config |
 | `performance`   | performance     | Minimal throttling, allow higher temps |
+
+### Turbo Boost Control
+
+In silent profile, turbo boost is automatically disabled to further reduce heat output.
+Turbo is re-enabled when switching to balanced or performance profiles.
+
+Supported turbo control interfaces:
+- Intel pstate: `/sys/devices/system/cpu/intel_pstate/no_turbo`
+- Generic cpufreq: `/sys/devices/system/cpu/cpufreq/boost`
+- AMD pstate (passive mode): Uses cpufreq boost interface
+
+Note: On `amd-pstate-epp` (active mode), turbo is controlled by the driver and
+cannot be manually toggled.
 
 ### Profile Interface
 
@@ -243,7 +256,8 @@ Levels: error, warn, info, debug
 
 On shutdown:
 1. Restore `scaling_max_freq` to `cpuinfo_max_freq` for all CPUs
-2. Clean exit
+2. Restore turbo boost to original state (if it was modified)
+3. Clean exit
 
 ## File Structure
 
@@ -257,7 +271,8 @@ On shutdown:
 │   ├── thermal.rs       # Temperature sensor reading
 │   ├── cpufreq.rs       # CPU frequency control
 │   ├── profile.rs       # Platform profile watcher
-│   └── throttle.rs      # Throttling algorithm
+│   ├── throttle.rs      # Throttling algorithm
+│   └── turbo.rs         # Turbo boost control
 ```
 
 ## Dependencies

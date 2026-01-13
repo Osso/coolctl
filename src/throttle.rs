@@ -36,11 +36,6 @@ impl Throttle {
         self.last_trigger_temp = None;
     }
 
-    /// Get current thresholds
-    pub fn thresholds(&self) -> (u32, u32) {
-        (self.throttle_start, self.throttle_max)
-    }
-
     /// Calculate target frequency based on temperature
     /// Returns Some(freq) if frequency should change, None if within hysteresis
     pub fn calculate(&mut self, temp: u32) -> Option<u64> {
@@ -81,6 +76,7 @@ impl Throttle {
     }
 
     /// Force recalculation on next call (clear hysteresis state)
+    #[cfg(test)]
     pub fn reset(&mut self) {
         self.last_trigger_temp = None;
     }

@@ -29,8 +29,8 @@ enable_profiles = true
 # Silent profile: aggressive throttling for quiet fans
 # Maps to platform_profile "low-power"
 [profile_silent]
-throttle_start = 45
-throttle_max = 60
+throttle_start = 40
+throttle_max = 50
 
 # Performance profile: minimal throttling, allow higher temps
 # Maps to platform_profile "performance"
