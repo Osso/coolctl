@@ -29,7 +29,10 @@ impl TurboController {
         let intel_path = Path::new("/sys/devices/system/cpu/intel_pstate/no_turbo");
         if intel_path.exists() {
             let original = Self::read_state(intel_path, true)?;
-            log::info!("Detected Intel turbo control, currently {}", if original { "enabled" } else { "disabled" });
+            log::info!(
+                "Detected Intel turbo control, currently {}",
+                if original { "enabled" } else { "disabled" }
+            );
             return Ok(Self {
                 path: intel_path.to_path_buf(),
                 inverse: true,
@@ -41,7 +44,10 @@ impl TurboController {
         let boost_path = Path::new("/sys/devices/system/cpu/cpufreq/boost");
         if boost_path.exists() {
             let original = Self::read_state(boost_path, false)?;
-            log::info!("Detected cpufreq boost control, currently {}", if original { "enabled" } else { "disabled" });
+            log::info!(
+                "Detected cpufreq boost control, currently {}",
+                if original { "enabled" } else { "disabled" }
+            );
             return Ok(Self {
                 path: boost_path.to_path_buf(),
                 inverse: false,
@@ -77,18 +83,26 @@ impl TurboController {
     /// Set turbo boost state
     pub fn set_enabled(&self, enabled: bool) -> Result<(), TurboError> {
         let value = if enabled ^ self.inverse { "1" } else { "0" };
-        fs::write(&self.path, value).map_err(|e| {
-            TurboError::WriteError(format!("{}: {}", self.path.display(), e))
-        })?;
-        log::info!("Turbo boost {}", if enabled { "enabled" } else { "disabled" });
+        fs::write(&self.path, value)
+            .map_err(|e| TurboError::WriteError(format!("{}: {}", self.path.display(), e)))?;
+        log::info!(
+            "Turbo boost {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
         Ok(())
     }
 
     /// Restore original turbo state
     pub fn restore(&self) -> Result<(), TurboError> {
         self.set_enabled(self.original_state)?;
-        log::info!("Restored turbo boost to original state: {}",
-            if self.original_state { "enabled" } else { "disabled" });
+        log::info!(
+            "Restored turbo boost to original state: {}",
+            if self.original_state {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
         Ok(())
     }
 }

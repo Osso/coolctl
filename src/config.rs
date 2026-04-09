@@ -23,9 +23,9 @@ pub struct ProfileThresholds {
 /// Power profile names matching platform_profile values
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PowerProfile {
-    Silent,      // low-power
+    Silent, // low-power
     #[default]
-    Balanced,    // balanced
+    Balanced, // balanced
     Performance, // performance
 }
 
