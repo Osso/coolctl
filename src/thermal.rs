@@ -91,48 +91,12 @@ impl ThermalSensor {
     /// Detect thermal zone sensor
     fn detect_thermal_zone() -> Result<Self, ThermalError> {
         let thermal_base = Path::new("/sys/class/thermal");
-
         if !thermal_base.exists() {
             return Err(ThermalError::NoSensorFound);
         }
-
-        // Preferred zone types for CPU temperature
         let preferred_types = ["x86_pkg_temp", "cpu", "k10temp", "acpitz"];
-        // Types to avoid
         let excluded_types = ["iwlwifi", "pch", "int340"];
-
-        let mut zones: Vec<(PathBuf, String)> = Vec::new();
-
-        for entry in fs::read_dir(thermal_base).map_err(ThermalError::ReadError)? {
-            let entry = entry.map_err(ThermalError::ReadError)?;
-            let path = entry.path();
-
-            if !path.file_name().map_or(false, |n| {
-                n.to_string_lossy().starts_with("thermal_zone")
-            }) {
-                continue;
-            }
-
-            let type_path = path.join("type");
-            let temp_path = path.join("temp");
-
-            if !temp_path.exists() {
-                continue;
-            }
-
-            if let Ok(zone_type) = fs::read_to_string(&type_path) {
-                let zone_type = zone_type.trim().to_lowercase();
-
-                // Skip excluded types
-                if excluded_types.iter().any(|t| zone_type.contains(t)) {
-                    continue;
-                }
-
-                zones.push((temp_path, zone_type));
-            }
-        }
-
-        // Sort by preference
+        let mut zones = detect_thermal_zones(thermal_base, &excluded_types)?;
         zones.sort_by(|a, b| {
             let a_pref = preferred_types
                 .iter()
@@ -144,19 +108,20 @@ impl ThermalSensor {
                 .unwrap_or(usize::MAX);
             a_pref.cmp(&b_pref)
         });
-
-        if let Some((path, zone_type)) = zones.into_iter().next() {
-            log::info!("Detected thermal zone: {} at {:?}", zone_type, path);
-            return Ok(Self { path });
-        }
-
-        Err(ThermalError::NoSensorFound)
+        let Some((path, zone_type)) = zones.into_iter().next() else {
+            return Err(ThermalError::NoSensorFound);
+        };
+        log::info!("Detected thermal zone: {} at {:?}", zone_type, path);
+        Ok(Self { path })
     }
 
     /// Read current temperature in degrees Celsius
     pub fn read_temp(&self) -> Result<u32, ThermalError> {
         let content = fs::read_to_string(&self.path)?;
-        let millidegrees: i64 = content.trim().parse().map_err(|_| ThermalError::ParseError)?;
+        let millidegrees: i64 = content
+            .trim()
+            .parse()
+            .map_err(|_| ThermalError::ParseError)?;
         // sysfs reports temperature in millidegrees Celsius
         Ok((millidegrees / 1000) as u32)
     }
@@ -165,6 +130,48 @@ impl ThermalSensor {
     pub fn path(&self) -> &Path {
         &self.path
     }
+}
+
+fn detect_thermal_zones(
+    thermal_base: &Path,
+    excluded_types: &[&str],
+) -> Result<Vec<(PathBuf, String)>, ThermalError> {
+    let mut zones = Vec::new();
+    for entry in fs::read_dir(thermal_base).map_err(ThermalError::ReadError)? {
+        let entry = entry.map_err(ThermalError::ReadError)?;
+        let Some(zone) = thermal_zone(entry.path(), excluded_types) else {
+            continue;
+        };
+        zones.push(zone);
+    }
+    Ok(zones)
+}
+
+fn thermal_zone(path: PathBuf, excluded_types: &[&str]) -> Option<(PathBuf, String)> {
+    if !is_thermal_zone_dir(&path) {
+        return None;
+    }
+
+    let temp_path = path.join("temp");
+    if !temp_path.exists() {
+        return None;
+    }
+
+    let zone_type = fs::read_to_string(path.join("type")).ok()?;
+    let zone_type = zone_type.trim().to_lowercase();
+    if excluded_types
+        .iter()
+        .any(|excluded| zone_type.contains(excluded))
+    {
+        return None;
+    }
+
+    Some((temp_path, zone_type))
+}
+
+fn is_thermal_zone_dir(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.to_string_lossy().starts_with("thermal_zone"))
 }
 
 #[cfg(test)]

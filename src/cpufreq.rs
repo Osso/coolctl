@@ -38,58 +38,20 @@ impl CpuFreq {
 
         for entry in fs::read_dir(base)? {
             let entry = entry?;
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-
-            // Match cpu0, cpu1, etc.
-            if !name_str.starts_with("cpu") {
+            let Some(cpu_info) = Self::detect_cpu(entry.path())? else {
                 continue;
-            }
-            if !name_str[3..].chars().all(|c| c.is_ascii_digit()) {
-                continue;
-            }
-
-            let cpufreq_dir = entry.path().join("cpufreq");
-            if !cpufreq_dir.exists() {
-                continue;
-            }
-
-            let scaling_max = cpufreq_dir.join("scaling_max_freq");
-            if !scaling_max.exists() {
-                continue;
-            }
-
-            // Read hardware limits
-            // For amd-pstate-epp, cpuinfo_max_freq is dynamic based on EPP
-            // Use amd_pstate_max_freq if available for true hardware max
-            let cpu_min = Self::read_freq_file(&cpufreq_dir.join("cpuinfo_min_freq"))?;
-            let amd_max_path = cpufreq_dir.join("amd_pstate_max_freq");
-            let cpu_max = if amd_max_path.exists() {
-                Self::read_freq_file(&amd_max_path)?
-            } else {
-                Self::read_freq_file(&cpufreq_dir.join("cpuinfo_max_freq"))?
             };
-
-            min_freq = min_freq.min(cpu_min);
-            max_freq = max_freq.max(cpu_max);
-
-            cpu_paths.push(scaling_max);
+            min_freq = min_freq.min(cpu_info.min_freq);
+            max_freq = max_freq.max(cpu_info.max_freq);
+            cpu_paths.push(cpu_info.scaling_max);
         }
 
         if cpu_paths.is_empty() {
             return Err(CpuFreqError::NoCpusFound);
         }
 
-        // Sort by CPU number for consistent ordering
         cpu_paths.sort();
-
-        log::info!(
-            "Detected {} CPUs, freq range: {} - {} kHz",
-            cpu_paths.len(),
-            min_freq,
-            max_freq
-        );
-
+        log_detected_cpus(cpu_paths.len(), min_freq, max_freq);
         Ok(Self {
             cpu_paths,
             min_freq,
@@ -98,12 +60,36 @@ impl CpuFreq {
         })
     }
 
+    fn detect_cpu(path: PathBuf) -> Result<Option<CpuInfo>, CpuFreqError> {
+        if !is_cpu_dir(&path) {
+            return Ok(None);
+        }
+
+        let cpufreq_dir = path.join("cpufreq");
+        let scaling_max = cpufreq_dir.join("scaling_max_freq");
+        if !cpufreq_dir.exists() || !scaling_max.exists() {
+            return Ok(None);
+        }
+
+        Ok(Some(CpuInfo {
+            scaling_max,
+            min_freq: Self::read_freq_file(&cpufreq_dir.join("cpuinfo_min_freq"))?,
+            max_freq: Self::cpu_max_freq(&cpufreq_dir)?,
+        }))
+    }
+
+    fn cpu_max_freq(cpufreq_dir: &Path) -> Result<u64, CpuFreqError> {
+        let amd_max_path = cpufreq_dir.join("amd_pstate_max_freq");
+        if amd_max_path.exists() {
+            return Self::read_freq_file(&amd_max_path);
+        }
+
+        Self::read_freq_file(&cpufreq_dir.join("cpuinfo_max_freq"))
+    }
+
     fn read_freq_file(path: &Path) -> Result<u64, CpuFreqError> {
         let content = fs::read_to_string(path)?;
-        content
-            .trim()
-            .parse()
-            .map_err(|_| CpuFreqError::ParseError)
+        content.trim().parse().map_err(|_| CpuFreqError::ParseError)
     }
 
     /// Get hardware minimum frequency (kHz)
@@ -137,9 +123,8 @@ impl CpuFreq {
 
         let freq_str = freq.to_string();
         for path in &self.cpu_paths {
-            fs::write(path, &freq_str).map_err(|e| {
-                CpuFreqError::WriteError(format!("{}: {}", path.display(), e))
-            })?;
+            fs::write(path, &freq_str)
+                .map_err(|e| CpuFreqError::WriteError(format!("{}: {}", path.display(), e)))?;
         }
 
         log::debug!("Set max frequency to {} kHz", freq);
@@ -155,6 +140,29 @@ impl CpuFreq {
         log::info!("Restored max frequency to {} kHz", max);
         Ok(())
     }
+}
+
+struct CpuInfo {
+    scaling_max: PathBuf,
+    min_freq: u64,
+    max_freq: u64,
+}
+
+fn is_cpu_dir(path: &Path) -> bool {
+    let Some(name) = path.file_name() else {
+        return false;
+    };
+    let name = name.to_string_lossy();
+    name.starts_with("cpu") && name[3..].chars().all(|c| c.is_ascii_digit())
+}
+
+fn log_detected_cpus(cpu_count: usize, min_freq: u64, max_freq: u64) {
+    log::info!(
+        "Detected {} CPUs, freq range: {} - {} kHz",
+        cpu_count,
+        min_freq,
+        max_freq
+    );
 }
 
 #[cfg(test)]
